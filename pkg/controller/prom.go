@@ -750,31 +750,51 @@ func (p *Prom) collectInstanceA10nspInterfaces(instance string, ch chan<- promet
 }
 
 func (p *Prom) collectInstanceStreams(instance string, ch chan<- prometheus.Metric) {
-	// Invoke command.
-	command := SocketCommand{
+	// Invoke command stream-summary.
+	command_summary := SocketCommand{
 		Command: "stream-summary",
 	}
-	result, err := p.repository.Command(instance, command)
+	result_summary, err := p.repository.Command(instance, command_summary)
 	if err != nil {
 		log.Warn().Msgf("failed to execute stream-summary: %s", err.Error())
 		return
 	}
-	// Decode response.
-	var cr StreamSummaryResponse
-	err = json.NewDecoder(strings.NewReader(string(result))).Decode(&cr)
+	// Decode stream-summary response.
+	var cr_summary StreamSummaryResponse
+	err = json.NewDecoder(strings.NewReader(string(result_summary))).Decode(&cr_summary)
 	if err != nil {
 		log.Warn().Msgf("failed to decode stream-summary: %s", err.Error())
 		return
 	}
-	// Return Metrics.
-	for _, stream := range cr.Streams {
-		fid := strconv.Itoa(stream.FlowId)
-		sid := strconv.Itoa(stream.SessionId)
-		ch <- prometheus.MustNewConstMetric(p.StreamTxPackets, prometheus.CounterValue, float64(stream.TxPackets), instance, fid, sid, stream.Name, stream.Direction, stream.Type, stream.SubType)
-		ch <- prometheus.MustNewConstMetric(p.StreamTxBytes, prometheus.CounterValue, float64(stream.TxBytes), instance, fid, sid, stream.Name, stream.Direction, stream.Type, stream.SubType)
-		ch <- prometheus.MustNewConstMetric(p.StreamRxPackets, prometheus.CounterValue, float64(stream.RxPackets), instance, fid, sid, stream.Name, stream.Direction, stream.Type, stream.SubType)
-		ch <- prometheus.MustNewConstMetric(p.StreamRxBytes, prometheus.CounterValue, float64(stream.RxBytes), instance, fid, sid, stream.Name, stream.Direction, stream.Type, stream.SubType)
-		ch <- prometheus.MustNewConstMetric(p.StreamRxLoss, prometheus.CounterValue, float64(stream.RxLoss), instance, fid, sid, stream.Name, stream.Direction, stream.Type, stream.SubType)
+	// Loop stream-summary response.
+	for _, stream_summary := range cr_summary.Streams {
+		// Invoke command stream-info.
+		command_info := SocketCommand{
+			Command: "stream-info",
+			Arguments: map[string]interface{}{
+				"flow-id": stream_summary.FlowId,
+			},
+		}
+		result_info, err := p.repository.Command(instance, command_info)
+		if err != nil {
+			log.Warn().Msgf("failed to execute stream-info: %s", err.Error())
+			return
+		}
+		// Decode stream-info response.
+		var cr_info StreamInfoResponse
+		err = json.NewDecoder(strings.NewReader(string(result_info))).Decode(&cr_info)
+		if err != nil {
+			log.Warn().Msgf("failed to decode stream-info: %s", err.Error())
+			return
+		}
+		// Return Metrics.
+		fid := strconv.Itoa(cr_info.StreamInfo.FlowId)
+		sid := strconv.Itoa(cr_info.StreamInfo.SessionId)
+		ch <- prometheus.MustNewConstMetric(p.StreamTxPackets, prometheus.CounterValue, float64(cr_info.StreamInfo.TxPackets), instance, fid, sid, cr_info.StreamInfo.Name, cr_info.StreamInfo.Direction, cr_info.StreamInfo.Type, cr_info.StreamInfo.SubType)
+		ch <- prometheus.MustNewConstMetric(p.StreamTxBytes, prometheus.CounterValue, float64(cr_info.StreamInfo.TxBytes), instance, fid, sid, cr_info.StreamInfo.Name, cr_info.StreamInfo.Direction, cr_info.StreamInfo.Type, cr_info.StreamInfo.SubType)
+		ch <- prometheus.MustNewConstMetric(p.StreamRxPackets, prometheus.CounterValue, float64(cr_info.StreamInfo.RxPackets), instance, fid, sid, cr_info.StreamInfo.Name, cr_info.StreamInfo.Direction, cr_info.StreamInfo.Type, cr_info.StreamInfo.SubType)
+		ch <- prometheus.MustNewConstMetric(p.StreamRxBytes, prometheus.CounterValue, float64(cr_info.StreamInfo.RxBytes), instance, fid, sid, cr_info.StreamInfo.Name, cr_info.StreamInfo.Direction, cr_info.StreamInfo.Type, cr_info.StreamInfo.SubType)
+		ch <- prometheus.MustNewConstMetric(p.StreamRxLoss, prometheus.CounterValue, float64(cr_info.StreamInfo.RxLoss), instance, fid, sid, cr_info.StreamInfo.Name, cr_info.StreamInfo.Direction, cr_info.StreamInfo.Type, cr_info.StreamInfo.SubType)
 	}
 }
 
